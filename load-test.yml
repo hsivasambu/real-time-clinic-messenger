@@ -1,0 +1,25 @@
+config:
+  target: "http://localhost:3001"
+  phases:
+    - duration: 60
+      arrivalRate: 10
+  socketio:
+    transports: ["websocket"]
+
+scenarios:
+  - name: "Connect and send messages"
+    weight: 100
+    engine: socketio
+    flow:
+      - emit:
+          channel: "join"
+          data:
+            userId: "user_{{ $uuid }}"
+            roomId: "general"
+            name: "TestUser{{ $uuid }}"
+      - think: 2
+      - emit:
+          channel: "send_message"
+          data:
+            content: "Hello from load test {{ $uuid }}"
+      - think: 5
