@@ -28,13 +28,12 @@ const SERVER_ID =
 console.log(`🚀 Server instance ID: ${SERVER_ID}`);
 
 async function setupRedisMessageHandler() {
-  // Handle all Redis pub/sub messages
   redisManager.subscriber.on("message", (channel, message) => {
     try {
       const data = JSON.parse(message);
       const roomId = channel.split(":")[1];
 
-      // Don't process messages from this server instance to avoid loops
+      // Don't process messages from this server instance
       if (data.serverId === SERVER_ID) {
         return;
       }
@@ -45,9 +44,12 @@ async function setupRedisMessageHandler() {
         } for room ${roomId}`
       );
 
-      // Handle different message types
+      // Handle different message types properly
       switch (data.type) {
         case "user_joined":
+          console.log(
+            `🔄 Relaying user_joined: ${data.userName} to room ${roomId}`
+          );
           io.to(roomId).emit("user_joined", {
             userId: data.userId,
             userName: data.userName,
@@ -57,6 +59,9 @@ async function setupRedisMessageHandler() {
           break;
 
         case "user_left":
+          console.log(
+            `🔄 Relaying user_left: ${data.userName} from room ${roomId}`
+          );
           io.to(roomId).emit("user_left", {
             userId: data.userId,
             userName: data.userName,
@@ -67,6 +72,9 @@ async function setupRedisMessageHandler() {
           break;
 
         case "room_info":
+          console.log(
+            `🔄 Relaying room_info for room ${roomId}: ${data.userCount} users`
+          );
           io.to(roomId).emit("room_info", {
             roomId: data.roomId,
             userCount: data.userCount,
@@ -75,6 +83,11 @@ async function setupRedisMessageHandler() {
           break;
 
         case "user_typing":
+          console.log(
+            `🔄 Relaying typing: ${data.userName} (${
+              data.isTyping ? "started" : "stopped"
+            }) in room ${roomId}`
+          );
           io.to(roomId).emit("user_typing", {
             userId: data.userId,
             userName: data.userName,
@@ -84,6 +97,9 @@ async function setupRedisMessageHandler() {
 
         default:
           // Regular chat message
+          console.log(
+            `🔄 Relaying message from ${data.userName} to room ${roomId}`
+          );
           io.to(roomId).emit("new_message", data);
           break;
       }
@@ -135,12 +151,12 @@ io.on("connection", (socket) => {
       // Subscribe this server to the room's Redis channel if not already subscribed
       if (!subscribedRooms.has(roomId)) {
         await redisManager.subscribeToRoom(roomId, () => {
-          // This callback is handled by the main message handler now
+          // Callback handled by main Redis message handler
         });
         subscribedRooms.add(roomId);
       }
 
-      // Send confirmation to the user
+      // Send confirmation to the user FIRST
       socket.emit("joined_room", {
         roomId,
         message: `Successfully joined ${roomId}`,
@@ -151,7 +167,7 @@ io.on("connection", (socket) => {
       // Get updated room statistics from Redis
       const roomStats = await redisManager.getRoomStats(roomId);
 
-      // Notify other users in the room about the new user
+      // 🔥 FIX: Send join notification through Redis (not just locally)
       const joinMessage = {
         type: "user_joined",
         userId,
@@ -161,9 +177,10 @@ io.on("connection", (socket) => {
         timestamp: new Date(),
       };
 
+      // Publish to Redis so ALL servers get this event
       await redisManager.publishToRoom(roomId, joinMessage);
 
-      // Send updated room info to ALL users in the room
+      // 🔥 FIX: Send room info through Redis (not just locally)
       const roomInfoMessage = {
         type: "room_info",
         roomId,
@@ -172,14 +189,8 @@ io.on("connection", (socket) => {
         timestamp: new Date(),
       };
 
+      // Publish to Redis so ALL servers get updated room info
       await redisManager.publishToRoom(roomId, roomInfoMessage);
-
-      // Also send room info directly to the joining user
-      socket.emit("room_info", {
-        roomId,
-        userCount: roomStats.userCount,
-        timestamp: new Date(),
-      });
     } catch (error) {
       console.error("Error in join_room:", error);
       socket.emit("error", { message: "Failed to join room" });
@@ -240,6 +251,7 @@ io.on("connection", (socket) => {
   });
 
   // Handle typing indicators
+  // Handle typing indicators - FIXED VERSION
   socket.on("typing_start", async () => {
     const connectionInfo = activeConnections.get(socket.id);
     if (connectionInfo) {
@@ -253,7 +265,12 @@ io.on("connection", (socket) => {
         timestamp: new Date(),
       };
 
+      // 🔥 FIX: Send through Redis, not just locally
       await redisManager.publishToRoom(connectionInfo.roomId, typingMessage);
+
+      console.log(
+        `⌨️ ${connectionInfo.userName} started typing in ${connectionInfo.roomId}`
+      );
     }
   });
 
@@ -270,7 +287,12 @@ io.on("connection", (socket) => {
         timestamp: new Date(),
       };
 
+      // 🔥 FIX: Send through Redis, not just locally
       await redisManager.publishToRoom(connectionInfo.roomId, typingMessage);
+
+      console.log(
+        `⌨️ ${connectionInfo.userName} stopped typing in ${connectionInfo.roomId}`
+      );
     }
   });
 
@@ -293,7 +315,7 @@ io.on("connection", (socket) => {
       // Remove from Redis
       await redisManager.removeConnection(socket.id);
 
-      // Notify other users via Redis
+      // 🔥 FIX: Send leave notification through Redis
       const leaveMessage = {
         type: "user_left",
         userId,
@@ -306,7 +328,7 @@ io.on("connection", (socket) => {
 
       await redisManager.publishToRoom(roomId, leaveMessage);
 
-      // Update room info
+      // 🔥 FIX: Update room info through Redis
       const roomStats = await redisManager.getRoomStats(roomId);
       const roomInfoMessage = {
         type: "room_info",
