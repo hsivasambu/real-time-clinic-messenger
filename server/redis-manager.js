@@ -2,28 +2,29 @@ const Redis = require("ioredis");
 
 class RedisManager {
   constructor() {
+    // Use Redis URL for Render deployment, fallback to host/port for local dev
+    const redisConfig = process.env.REDIS_URL
+      ? process.env.REDIS_URL
+      : {
+          host: process.env.REDIS_HOST || "localhost",
+          port: process.env.REDIS_PORT || 6379,
+        };
+
     // Create separate Redis connections for pub/sub
-    // (Redis requirement: subscribers can't use same connection for other operations)
-    this.publisher = new Redis({
-      host: process.env.REDIS_HOST || "localhost",
-      port: process.env.REDIS_PORT || 6379,
+    this.publisher = new Redis(redisConfig, {
       retryDelayOnFailover: 100,
       enableOfflineQueue: false,
       maxRetriesPerRequest: 3,
     });
 
-    this.subscriber = new Redis({
-      host: process.env.REDIS_HOST || "localhost",
-      port: process.env.REDIS_PORT || 6379,
+    this.subscriber = new Redis(redisConfig, {
       retryDelayOnFailover: 100,
       enableOfflineQueue: false,
       maxRetriesPerRequest: 3,
     });
 
     // General Redis client for other operations
-    this.client = new Redis({
-      host: process.env.REDIS_HOST || "localhost",
-      port: process.env.REDIS_PORT || 6379,
+    this.client = new Redis(redisConfig, {
       retryDelayOnFailover: 100,
       enableOfflineQueue: false,
       maxRetriesPerRequest: 3,
