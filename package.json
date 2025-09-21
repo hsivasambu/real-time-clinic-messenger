@@ -4,9 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server/index.js",
-    "dev": "nodemon server/index.js"
+    "dev": "nodemon server/index.js",
+    "dev:server1": "cross-env SERVER_ID=server-1 PORT=3001 nodemon server/index.js",
+    "dev:server2": "cross-env SERVER_ID=server-2 PORT=3002 nodemon server/index.js",
+    "redis": "docker run -d -p 6379:6379 --name redis redis:alpine",
+    "redis:stop": "docker stop redis && docker rm redis"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +20,9 @@
     "redis": "^5.8.2",
     "socket.io": "^4.8.1",
     "uuid": "^13.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
